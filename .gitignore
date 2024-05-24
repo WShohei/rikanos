@@ -1,0 +1,5 @@
+mnt
+target
+.cargo
+*.img
+
