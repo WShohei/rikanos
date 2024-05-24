@@ -6,6 +6,7 @@ use log::info;
 
 #[entry]
 #[allow(dead_code)]
+#[allow(unreachable_code)]
 fn efi_main(handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     uefi::helpers::init(&mut system_table).unwrap();
     info!("Hello, UEFI!");
