@@ -1,0 +1,5 @@
+[toolchain]
+# https://rust-lang.github.io/rustup/overrides.html#the-toolchain-file
+channel = "nightly-2022-06-30"
+components = [ "rustfmt", "rust-src" ]
+targets = [ "x86_64-unknown-linux-gnu" ]
