@@ -1,4 +1,4 @@
-KERNEL = ./kernel/target/x86_64-unknown-rikanos/release/kernel
+KERNEL = ./kernel/target/x86_64-unknown-elf/release/kernel
 KERNEL_PATH = ~/workspace/rikanos/kernel
 LOADER = ./bootloader/target/x86_64-unknown-uefi/release/rikan-loader.efi
 LOADER_PATH = ~/workspace/rikanos/bootloader
