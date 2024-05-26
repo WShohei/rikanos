@@ -18,7 +18,7 @@
       "-L/home/shohei/osbook/devenv/x86_64-elf/lib",
       "-lc",
       "-lc++",
-      "--entry", "KernelMain",
+      "--entry", "kernel_main",
       "-z", "norelro",
       "--image-base", "0x100000",
       "-o", "kernel.elf",

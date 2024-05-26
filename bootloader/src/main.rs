@@ -6,10 +6,13 @@ extern crate alloc;
 use alloc::{slice, vec::Vec};
 use core::result::Result;
 use log::info;
+use uefi::proto::console::gop::GraphicsOutput;
 use uefi::proto::media::file::{
     Directory, File, FileAttribute, FileInfo, FileMode, FileType::Regular, RegularFile,
 };
-use uefi::table::boot::{AllocateType, MemoryMap, MemoryType};
+use uefi::table::boot::{
+    AllocateType, MemoryMap, MemoryType, OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol,
+};
 use uefi::{prelude::*, Error};
 
 // set the memory allocator
@@ -62,6 +65,38 @@ fn save_memory_map<'a>(
     Ok(mmap)
 }
 
+fn open_gop<'a>(bs: &'a BootServices) -> Result<ScopedProtocol<'a, GraphicsOutput>, Error> {
+    info!("Opening GOP...");
+    let gop_handle = if let Ok(gop_handle) = bs.get_handle_for_protocol::<GraphicsOutput>() {
+        gop_handle
+    } else {
+        panic!("Failed to locate GOP handle");
+    };
+    let params = OpenProtocolParams {
+        handle: gop_handle,
+        agent: bs.image_handle(),
+        controller: Some(gop_handle),
+    };
+    info!("GOP handle obtained");
+    //let gop = if let Ok(gop) = bs.open_protocol_exclusive::<GraphicsOutput>(gop_handle) {
+    //    gop
+    //} else {
+    //    panic!("Failed to open GOP");
+    //};
+    unsafe {
+        let gop = if let Ok(gop) =
+            bs.open_protocol::<GraphicsOutput>(params, OpenProtocolAttributes::GetProtocol)
+        {
+            gop
+        } else {
+            panic!("Failed to open GOP");
+        };
+        let handle_buffer = gop_handle.as_ptr() as *mut u8;
+        bs.free_pool(handle_buffer)?;
+        Ok(gop)
+    }
+}
+
 fn load_kernel_file(bs: &BootServices, kernel_file_handle: &mut RegularFile) -> Result<(), Error> {
     let mut file_info_buf: Vec<u8> = Vec::new();
     let info_size = kernel_file_handle
@@ -83,6 +118,7 @@ fn load_kernel_file(bs: &BootServices, kernel_file_handle: &mut RegularFile) -> 
     unsafe {
         let addr = BASE_ADDR as *mut u8;
         let buffer = slice::from_raw_parts_mut(addr, kernel_file_size as usize);
+        kernel_file_handle.set_position(0)?;
         kernel_file_handle.read(buffer)?;
     }
 
@@ -150,36 +186,61 @@ fn efi_main(handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
 
     if let Regular(mut kernel_file_handle) = kernel_file_handle {
         load_kernel_file(bs, &mut kernel_file_handle).unwrap();
+        info!("Kernel file loaded");
     } else {
         info!("Failed to open kernel file");
         return Status::ABORTED;
     }
-    // End of loading the kernel file
+    //End of loading the kernel file
+
+    //Open the GOP
+    let mut gop = if let Ok(gop) = open_gop(bs) {
+        info!("GOP opened");
+        gop
+    } else {
+        info!("Failed to open GOP");
+        return Status::ABORTED;
+    };
+    let gop_frame_base = gop.frame_buffer().as_mut_ptr() as usize;
+    let gop_frame_size = gop.frame_buffer().size() as usize;
+    let gop_mode_info = gop.current_mode_info();
+    let gop_width = gop_mode_info.resolution().0 as usize;
+    let gop_height = gop_mode_info.resolution().1 as usize;
+    let gop_pixel_format = gop_mode_info.pixel_format();
+    let gop_stride = gop_mode_info.stride() as usize;
+    info!("GOP resolution: {}x{}", gop_width, gop_height);
+    info!("GOP pixel format: {:?}", gop_pixel_format);
+    info!("GOP stride: {}", gop_stride);
+    info!(
+        "GOP frame buffer: 0x{:x}-0x{:x}, size: {} bytes",
+        gop_frame_base,
+        gop_frame_base + gop_frame_size,
+        gop_frame_size
+    );
+    unsafe {
+        for i in 0..gop_frame_size {
+            let addr = gop_frame_base + i;
+            core::ptr::write_volatile(addr as *mut u8, 255);
+        }
+    }
+    // End of opening the GOP
 
     // Exit boot services
-    info!("Exiting boot services and jumping to the kernel...");
-    let _ = system_table.exit_boot_services(MemoryType::RESERVED);
+    //let _ = system_table.exit_boot_services(MemoryType::RESERVED);
     // End of exiting boot services
 
     // Jump to the kernel
-    let entry_point_addr = unsafe {
-        let addr_ptr = (BASE_ADDR + 24) as *const u8;
-        let addr_slice = core::slice::from_raw_parts(addr_ptr, 8);
-        u64::from_le_bytes([
-            addr_slice[0],
-            addr_slice[1],
-            addr_slice[2],
-            addr_slice[3],
-            addr_slice[4],
-            addr_slice[5],
-            addr_slice[6],
-            addr_slice[7],
-        ])
+    let entry_point_addr: usize = unsafe {
+        let addr_ptr = (BASE_ADDR + 24) as *const usize;
+        *addr_ptr
     };
-    let entry_point: extern "C" fn() -> ! = unsafe { core::mem::transmute(entry_point_addr) };
+    info!("Kernel entry point: 0x{:x}", entry_point_addr);
+    let entry_point: extern "C" fn(usize, usize) -> ! = unsafe {
+        core::mem::transmute::<usize, extern "C" fn(usize, usize) -> !>(entry_point_addr)
+    };
 
-    entry_point();
-    // End of jumping to the kernel
+    entry_point(gop_frame_base, gop_frame_size);
+    //End of jumping to the kernel
 
     Status::SUCCESS
 }
