@@ -16,12 +16,10 @@ use uefi::table::boot::{
 };
 use uefi::{prelude::*, Error};
 
+
 // set the memory allocator
-use linked_list_allocator::LockedHeap;
-const HEAP_SIZE: usize = 64 * 1024; // 64 KiB
-static mut HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 #[global_allocator]
-static ALLOCATOR: LockedHeap = LockedHeap::empty();
+static ALLOCATOR: uefi::allocator::Allocator = uefi::allocator::Allocator;
 // end of setting the memory allocator
 
 const BASE_ADDR: u64 = 0x100000;
@@ -156,7 +154,11 @@ fn load_kernel_file(bs: &BootServices, mut kernel_file_handle: RegularFile) -> R
             }
             if size < ph.memsz() as usize {
                 unsafe {
-                    core::ptr::write_bytes((start + size as u64) as *mut u8, 0, ph.memsz() as usize - size);
+                    core::ptr::write_bytes(
+                        (start + size as u64) as *mut u8,
+                        0,
+                        ph.memsz() as usize - size,
+                    );
                 }
             }
         }
@@ -170,14 +172,17 @@ fn load_kernel_file(bs: &BootServices, mut kernel_file_handle: RegularFile) -> R
 #[allow(unreachable_code)]
 fn efi_main(handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     uefi::helpers::init(&mut system_table).unwrap();
+    unsafe {
+        uefi::allocator::init(&mut system_table);
+    }
     info!("Hello, UEFI!");
 
     // Initialize the heap
-    info!("Initializing heap...");
-    unsafe {
-        ALLOCATOR.lock().init(HEAP.as_ptr() as *mut u8, HEAP_SIZE);
-    }
-    info!("Heap initialized");
+    //info!("Initializing heap...");
+    //unsafe {
+    //    ALLOCATOR.lock().init(HEAP.as_ptr() as *mut u8, HEAP_SIZE);
+    //}
+    //info!("Heap initialized");
     // End of heap initialization
 
     // Open the root directory
@@ -234,48 +239,52 @@ fn efi_main(handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     //End of loading the kernel file
 
     //Open the GOP
-    match open_gop(bs) {
-        Ok(mut gop) => {
-            info!("GOP opened");
-            let gop_frame_base = gop.frame_buffer().as_mut_ptr().clone() as usize;
-            let gop_frame_size = gop.frame_buffer().size().clone() as usize;
-            info!(
-                "GOP frame buffer: 0x{:x}-0x{:x}, size: {} bytes",
-                gop_frame_base,
-                gop_frame_base + gop_frame_size,
-                gop_frame_size
-            );
-            //unsafe {
-            //    for i in 0..gop_frame_size {
-            //        let addr = gop_frame_base + i;
-            //        core::ptr::write_volatile(addr as *mut u8, 255);
-            //    }
-            //}
-
-            // Jump to the kernel
-            info!("Jumping to the kernel...");
-            let entry_point_addr: usize = unsafe {
-                let addr_ptr = (BASE_ADDR + 24) as *const usize;
-                *addr_ptr
-            };
-            info!("Kernel entry point: 0x{:x}", entry_point_addr);
-            let entry_point_addr = entry_point_addr as *const ();
-            let entry_point: extern "efiapi" fn(usize, usize) -> () = unsafe {
-                core::mem::transmute::<*const (), extern "efiapi" fn(usize, usize) -> ()>(
-                    entry_point_addr,
-                )
-            };
-
-            //let _ = system_table.exit_boot_services(MemoryType::RESERVED); // Exit boot services
-
-            entry_point(gop_frame_base, gop_frame_size);
-        }
-        Err(_) => {
-            info!("Failed to open GOP");
-            return Status::ABORTED;
-        }
-    }
+    let mut gop = open_gop(bs).unwrap();
+    info!("GOP opened");
+    let gop_frame_base = gop.frame_buffer().as_mut_ptr().clone() as usize;
+    let gop_frame_size = gop.frame_buffer().size().clone() as usize;
+    info!(
+        "GOP frame buffer: 0x{:x}-0x{:x}, size: {} bytes",
+        gop_frame_base,
+        gop_frame_base + gop_frame_size,
+        gop_frame_size
+    );
+    //let (gop_frame_base, gop_frame_size) = match open_gop(bs) {
+    //    Ok(mut gop) => {
+    //        info!("GOP opened");
+    //        let gop_frame_base = gop.frame_buffer().as_mut_ptr().clone() as usize;
+    //        let gop_frame_size = gop.frame_buffer().size().clone() as usize;
+    //        info!(
+    //            "GOP frame buffer: 0x{:x}-0x{:x}, size: {} bytes",
+    //            gop_frame_base,
+    //            gop_frame_base + gop_frame_size,
+    //            gop_frame_size
+    //        );
+    //        (gop_frame_base, gop_frame_size)
+    //    }
+    //    Err(_) => {
+    //        info!("Failed to open GOP");
+    //        return Status::ABORTED;
+    //    }
+    //};
     // End of opening the GOP
+
+    // Jump to the kernel
+    info!("Jumping to the kernel...");
+    let entry_point_addr: usize = unsafe {
+        let addr_ptr = (BASE_ADDR + 24) as *const usize;
+        *addr_ptr
+    };
+    info!("Kernel entry point: 0x{:x}", entry_point_addr);
+    let entry_point_addr = entry_point_addr as *const ();
+    let entry_point = unsafe {
+        core::mem::transmute::<*const (), extern "efiapi" fn(usize, usize) -> ()>(entry_point_addr)
+    };
+
+    uefi::allocator::exit_boot_services();
+    //let _ = system_table.exit_boot_services(MemoryType::PERSISTENT_MEMORY); // Exit boot services
+
+    entry_point(gop_frame_base, gop_frame_size);
 
     Status::SUCCESS
 }
