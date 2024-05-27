@@ -10,16 +10,15 @@ fn panic(_info: &PanicInfo) -> ! {
 }
 
 #[no_mangle]
-pub extern "C" fn kernel_main(frame_buffer_base: usize, frame_buffer_size: usize) -> () {
+pub extern "efiapi" fn kernel_main(frame_buffer_base: usize, frame_buffer_size: usize) -> () {
     unsafe {
-        let frame_buffer_base = frame_buffer_base as *mut u8;
-        
         for i in 0..frame_buffer_size {
-            frame_buffer_base.add(i).write_volatile(255);
+            let addr = frame_buffer_base + i;
+            core::ptr::write_volatile(addr as *mut u8, (i % 256) as u8);
         }
 
-        loop {
-            asm!("hlt");
-        }
+        //loop {
+        //    asm!("hlt");
+        //}
     }
 }

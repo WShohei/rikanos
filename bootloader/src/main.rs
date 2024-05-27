@@ -3,8 +3,9 @@
 
 #[macro_use]
 extern crate alloc;
-use alloc::{slice, vec::Vec};
+use alloc::vec::Vec;
 use core::result::Result;
+use elf_rs::*;
 use log::info;
 use uefi::proto::console::gop::GraphicsOutput;
 use uefi::proto::media::file::{
@@ -65,7 +66,7 @@ fn save_memory_map<'a>(
     Ok(mmap)
 }
 
-fn open_gop<'a>(bs: &'a BootServices) -> Result<ScopedProtocol<'a, GraphicsOutput>, Error> {
+fn open_gop(bs: &BootServices) -> Result<ScopedProtocol<GraphicsOutput>, Error> {
     info!("Opening GOP...");
     let gop_handle = if let Ok(gop_handle) = bs.get_handle_for_protocol::<GraphicsOutput>() {
         gop_handle
@@ -97,7 +98,7 @@ fn open_gop<'a>(bs: &'a BootServices) -> Result<ScopedProtocol<'a, GraphicsOutpu
     }
 }
 
-fn load_kernel_file(bs: &BootServices, kernel_file_handle: &mut RegularFile) -> Result<(), Error> {
+fn load_kernel_file(bs: &BootServices, mut kernel_file_handle: RegularFile) -> Result<(), Error> {
     let mut file_info_buf: Vec<u8> = Vec::new();
     let info_size = kernel_file_handle
         .get_info::<FileInfo>(&mut file_info_buf)
@@ -110,16 +111,55 @@ fn load_kernel_file(bs: &BootServices, kernel_file_handle: &mut RegularFile) -> 
         .unwrap();
     let kernel_file_size = info.file_size();
 
+    let kernel_buffer = bs
+        .allocate_pool(MemoryType::LOADER_DATA, kernel_file_size as usize)
+        .unwrap();
+    let kernel_buffer =
+        unsafe { core::slice::from_raw_parts_mut(kernel_buffer, kernel_file_size as usize) };
+
+    kernel_file_handle.read(kernel_buffer).unwrap();
+    kernel_file_handle.close();
+
+    let elf = match Elf::from_bytes(kernel_buffer).unwrap() {
+        Elf::Elf64(elf) => elf,
+        Elf::Elf32(_) => panic!("32-bit ELF not supported"),
+    };
+
+    let mut kernel_first = u64::max_value();
+    let mut kernel_last = u64::min_value();
+    for ph in elf.program_header_iter() {
+        if ph.ph_type() == ProgramType::LOAD {
+            let start = ph.vaddr() as u64;
+            let end = start + ph.memsz() as u64;
+            kernel_first = core::cmp::min(kernel_first, start);
+            kernel_last = core::cmp::max(kernel_last, end);
+        }
+    }
+    let kernel_first = kernel_first / 0x1000 * 0x1000; // Round down to the nearest page
+    let num_pages = (kernel_last - kernel_first + 0xfff) as usize / 0x1000;
+
     bs.allocate_pages(
-        AllocateType::Address(BASE_ADDR),
+        AllocateType::Address(kernel_first),
         MemoryType::LOADER_DATA,
-        (kernel_file_size as usize + 0xfff) / 0x1000,
-    )?;
-    unsafe {
-        let addr = BASE_ADDR as *mut u8;
-        let buffer = slice::from_raw_parts_mut(addr, kernel_file_size as usize);
-        kernel_file_handle.set_position(0)?;
-        kernel_file_handle.read(buffer)?;
+        num_pages,
+    )
+    .unwrap();
+
+    for ph in elf.program_header_iter() {
+        if ph.ph_type() == ProgramType::LOAD {
+            let start = ph.vaddr() as u64;
+            let offset = ph.offset() as usize;
+            let size = ph.filesz() as usize;
+            let buffer = &kernel_buffer[offset..offset + size];
+            unsafe {
+                core::ptr::copy_nonoverlapping(buffer.as_ptr(), start as *mut u8, size);
+            }
+            if size < ph.memsz() as usize {
+                unsafe {
+                    core::ptr::write_bytes((start + size as u64) as *mut u8, 0, ph.memsz() as usize - size);
+                }
+            }
+        }
     }
 
     Ok(())
@@ -141,7 +181,7 @@ fn efi_main(handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     // End of heap initialization
 
     // Open the root directory
-    let bs: &BootServices = system_table.boot_services();
+    let bs = system_table.boot_services();
 
     let mut root = if let Ok(root) = open_root_dir(bs, handle) {
         root
@@ -177,15 +217,15 @@ fn efi_main(handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     // Load the kernel file
     let kernel_file_handle = root
         .open(
-            cstr16!("mikan-kernel"),
+            cstr16!("kernel.elf"),
             FileMode::Read,
             FileAttribute::empty(),
         )
         .unwrap();
     let kernel_file_handle = kernel_file_handle.into_type().unwrap();
 
-    if let Regular(mut kernel_file_handle) = kernel_file_handle {
-        load_kernel_file(bs, &mut kernel_file_handle).unwrap();
+    if let Regular(kernel_file_handle) = kernel_file_handle {
+        load_kernel_file(bs, kernel_file_handle).unwrap();
         info!("Kernel file loaded");
     } else {
         info!("Failed to open kernel file");
@@ -194,53 +234,48 @@ fn efi_main(handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     //End of loading the kernel file
 
     //Open the GOP
-    let mut gop = if let Ok(gop) = open_gop(bs) {
-        info!("GOP opened");
-        gop
-    } else {
-        info!("Failed to open GOP");
-        return Status::ABORTED;
-    };
-    let gop_frame_base = gop.frame_buffer().as_mut_ptr() as usize;
-    let gop_frame_size = gop.frame_buffer().size() as usize;
-    let gop_mode_info = gop.current_mode_info();
-    let gop_width = gop_mode_info.resolution().0 as usize;
-    let gop_height = gop_mode_info.resolution().1 as usize;
-    let gop_pixel_format = gop_mode_info.pixel_format();
-    let gop_stride = gop_mode_info.stride() as usize;
-    info!("GOP resolution: {}x{}", gop_width, gop_height);
-    info!("GOP pixel format: {:?}", gop_pixel_format);
-    info!("GOP stride: {}", gop_stride);
-    info!(
-        "GOP frame buffer: 0x{:x}-0x{:x}, size: {} bytes",
-        gop_frame_base,
-        gop_frame_base + gop_frame_size,
-        gop_frame_size
-    );
-    unsafe {
-        for i in 0..gop_frame_size {
-            let addr = gop_frame_base + i;
-            core::ptr::write_volatile(addr as *mut u8, 255);
+    match open_gop(bs) {
+        Ok(mut gop) => {
+            info!("GOP opened");
+            let gop_frame_base = gop.frame_buffer().as_mut_ptr().clone() as usize;
+            let gop_frame_size = gop.frame_buffer().size().clone() as usize;
+            info!(
+                "GOP frame buffer: 0x{:x}-0x{:x}, size: {} bytes",
+                gop_frame_base,
+                gop_frame_base + gop_frame_size,
+                gop_frame_size
+            );
+            //unsafe {
+            //    for i in 0..gop_frame_size {
+            //        let addr = gop_frame_base + i;
+            //        core::ptr::write_volatile(addr as *mut u8, 255);
+            //    }
+            //}
+
+            // Jump to the kernel
+            info!("Jumping to the kernel...");
+            let entry_point_addr: usize = unsafe {
+                let addr_ptr = (BASE_ADDR + 24) as *const usize;
+                *addr_ptr
+            };
+            info!("Kernel entry point: 0x{:x}", entry_point_addr);
+            let entry_point_addr = entry_point_addr as *const ();
+            let entry_point: extern "efiapi" fn(usize, usize) -> () = unsafe {
+                core::mem::transmute::<*const (), extern "efiapi" fn(usize, usize) -> ()>(
+                    entry_point_addr,
+                )
+            };
+
+            //let _ = system_table.exit_boot_services(MemoryType::RESERVED); // Exit boot services
+
+            entry_point(gop_frame_base, gop_frame_size);
+        }
+        Err(_) => {
+            info!("Failed to open GOP");
+            return Status::ABORTED;
         }
     }
     // End of opening the GOP
-
-    // Exit boot services
-    //let _ = system_table.exit_boot_services(MemoryType::RESERVED);
-    // End of exiting boot services
-
-    // Jump to the kernel
-    let entry_point_addr: usize = unsafe {
-        let addr_ptr = (BASE_ADDR + 24) as *const usize;
-        *addr_ptr
-    };
-    info!("Kernel entry point: 0x{:x}", entry_point_addr);
-    let entry_point: extern "C" fn(usize, usize) -> ! = unsafe {
-        core::mem::transmute::<usize, extern "C" fn(usize, usize) -> !>(entry_point_addr)
-    };
-
-    entry_point(gop_frame_base, gop_frame_size);
-    //End of jumping to the kernel
 
     Status::SUCCESS
 }
