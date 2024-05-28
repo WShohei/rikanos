@@ -20,10 +20,11 @@ impl PixelColor {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 #[allow(dead_code)]
 pub struct Graphics {
-    cfg: FrameBufferConfig,
-    pub pixel_writer: unsafe fn(&FrameBufferConfig, usize, usize, PixelColor) -> (),
+    _cfg: FrameBufferConfig,
+    _pixel_writer: unsafe fn(&FrameBufferConfig, usize, usize, &PixelColor) -> (),
 }
 
 impl Graphics {
@@ -32,7 +33,7 @@ impl Graphics {
             cfg: &FrameBufferConfig,
             x: usize,
             y: usize,
-            color: PixelColor,
+            color: &PixelColor,
         ) -> () {
             let addr = cfg.frame_buffer + (y * cfg.mode_info.stride() + x) * 4;
             core::ptr::write_volatile(
@@ -45,7 +46,7 @@ impl Graphics {
             cfg: &FrameBufferConfig,
             x: usize,
             y: usize,
-            color: PixelColor,
+            color: &PixelColor,
         ) -> () {
             let addr = cfg.frame_buffer + (y * cfg.mode_info.stride() + x) * 4;
             core::ptr::write_volatile(
@@ -60,6 +61,28 @@ impl Graphics {
             _ => panic!("unsupported pixel format"),
         };
 
-        Graphics { cfg, pixel_writer }
+        Graphics { _cfg: cfg, _pixel_writer: pixel_writer }
+    }
+
+    pub fn write_pixel(&self, x: usize, y: usize, color: &PixelColor) -> () {
+        unsafe {
+            (self._pixel_writer)(&self._cfg, x, y, color);
+        }
+    }
+
+    pub fn clear(&self, color: &PixelColor) -> () {
+        for y in 0..self.height() {
+            for x in 0..self.width() {
+                self.write_pixel(x, y, color);
+            }
+        }
+    }
+
+    pub fn width(&self) -> usize {
+        self._cfg.mode_info.resolution().0 as usize
+    }
+
+    pub fn height(&self) -> usize {
+        self._cfg.mode_info.resolution().1 as usize
     }
 }
