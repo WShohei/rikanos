@@ -11,11 +11,8 @@ use uefi::proto::console::gop::GraphicsOutput;
 use uefi::proto::media::file::{
     Directory, File, FileAttribute, FileInfo, FileMode, FileType::Regular, RegularFile,
 };
-use uefi::table::boot::{
-    AllocateType, MemoryMap, MemoryType, OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol,
-};
+use uefi::table::boot::{AllocateType, MemoryMap, MemoryType, ScopedProtocol};
 use uefi::{prelude::*, Error};
-
 
 // set the memory allocator
 #[global_allocator]
@@ -67,33 +64,21 @@ fn save_memory_map<'a>(
 fn open_gop(bs: &BootServices) -> Result<ScopedProtocol<GraphicsOutput>, Error> {
     info!("Opening GOP...");
     let gop_handle = if let Ok(gop_handle) = bs.get_handle_for_protocol::<GraphicsOutput>() {
+        info!("GOP handle obtained");
         gop_handle
     } else {
         panic!("Failed to locate GOP handle");
     };
-    let params = OpenProtocolParams {
-        handle: gop_handle,
-        agent: bs.image_handle(),
-        controller: Some(gop_handle),
+    let gop = if let Ok(gop) = bs.open_protocol_exclusive::<GraphicsOutput>(gop_handle) {
+        gop
+    } else {
+        panic!("Failed to open GOP");
     };
-    info!("GOP handle obtained");
-    //let gop = if let Ok(gop) = bs.open_protocol_exclusive::<GraphicsOutput>(gop_handle) {
-    //    gop
-    //} else {
-    //    panic!("Failed to open GOP");
-    //};
     unsafe {
-        let gop = if let Ok(gop) =
-            bs.open_protocol::<GraphicsOutput>(params, OpenProtocolAttributes::GetProtocol)
-        {
-            gop
-        } else {
-            panic!("Failed to open GOP");
-        };
         let handle_buffer = gop_handle.as_ptr() as *mut u8;
         bs.free_pool(handle_buffer)?;
-        Ok(gop)
     }
+    Ok(gop)
 }
 
 fn load_kernel_file(bs: &BootServices, mut kernel_file_handle: RegularFile) -> Result<(), Error> {
@@ -177,14 +162,6 @@ fn efi_main(handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     }
     info!("Hello, UEFI!");
 
-    // Initialize the heap
-    //info!("Initializing heap...");
-    //unsafe {
-    //    ALLOCATOR.lock().init(HEAP.as_ptr() as *mut u8, HEAP_SIZE);
-    //}
-    //info!("Heap initialized");
-    // End of heap initialization
-
     // Open the root directory
     let bs = system_table.boot_services();
 
@@ -249,24 +226,6 @@ fn efi_main(handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
         gop_frame_base + gop_frame_size,
         gop_frame_size
     );
-    //let (gop_frame_base, gop_frame_size) = match open_gop(bs) {
-    //    Ok(mut gop) => {
-    //        info!("GOP opened");
-    //        let gop_frame_base = gop.frame_buffer().as_mut_ptr().clone() as usize;
-    //        let gop_frame_size = gop.frame_buffer().size().clone() as usize;
-    //        info!(
-    //            "GOP frame buffer: 0x{:x}-0x{:x}, size: {} bytes",
-    //            gop_frame_base,
-    //            gop_frame_base + gop_frame_size,
-    //            gop_frame_size
-    //        );
-    //        (gop_frame_base, gop_frame_size)
-    //    }
-    //    Err(_) => {
-    //        info!("Failed to open GOP");
-    //        return Status::ABORTED;
-    //    }
-    //};
     // End of opening the GOP
 
     // Jump to the kernel
@@ -281,8 +240,7 @@ fn efi_main(handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
         core::mem::transmute::<*const (), extern "efiapi" fn(usize, usize) -> ()>(entry_point_addr)
     };
 
-    uefi::allocator::exit_boot_services();
-    //let _ = system_table.exit_boot_services(MemoryType::PERSISTENT_MEMORY); // Exit boot services
+    uefi::allocator::exit_boot_services(); // exit boot services before jumping to the kernel
 
     entry_point(gop_frame_base, gop_frame_size);
 

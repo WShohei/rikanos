@@ -17,8 +17,8 @@ pub extern "efiapi" fn kernel_main(frame_buffer_base: usize, frame_buffer_size: 
             core::ptr::write_volatile(addr as *mut u8, (i % 256) as u8);
         }
 
-        //loop {
-        //    asm!("hlt");
-        //}
+        loop {
+            asm!("hlt");
+        }
     }
 }
