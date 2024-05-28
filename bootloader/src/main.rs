@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use core::result::Result;
 use elf_rs::*;
 use log::info;
-use uefi::proto::console::gop::GraphicsOutput;
+use uefi::proto::console::gop::{GraphicsOutput, ModeInfo};
 use uefi::proto::media::file::{
     Directory, File, FileAttribute, FileInfo, FileMode, FileType::Regular, RegularFile,
 };
@@ -20,6 +20,14 @@ static ALLOCATOR: uefi::allocator::Allocator = uefi::allocator::Allocator;
 // end of setting the memory allocator
 
 const BASE_ADDR: u64 = 0x100000;
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+struct FrameBufferConfig {
+    pub frame_buffer: u64,
+    pub frame_buffer_size: u64,
+    pub mode_info: ModeInfo,
+}
 
 fn open_root_dir(bs: &BootServices, handle: Handle) -> Result<Directory, Error> {
     let mut sfs = bs.get_image_file_system(handle)?;
@@ -218,14 +226,20 @@ fn efi_main(handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     //Open the GOP
     let mut gop = open_gop(bs).unwrap();
     info!("GOP opened");
-    let gop_frame_base = gop.frame_buffer().as_mut_ptr().clone() as usize;
-    let gop_frame_size = gop.frame_buffer().size().clone() as usize;
+    let gop_frame_base = gop.frame_buffer().as_mut_ptr() as usize;
+    let gop_frame_size = gop.frame_buffer().size() as usize;
     info!(
         "GOP frame buffer: 0x{:x}-0x{:x}, size: {} bytes",
         gop_frame_base,
         gop_frame_base + gop_frame_size,
         gop_frame_size
     );
+    let mode_info = gop.current_mode_info();
+    let frame_buffer_config = FrameBufferConfig {
+        frame_buffer: gop_frame_base as u64,
+        frame_buffer_size: gop_frame_size as u64,
+        mode_info,
+    };
     // End of opening the GOP
 
     // Jump to the kernel
@@ -237,12 +251,14 @@ fn efi_main(handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     info!("Kernel entry point: 0x{:x}", entry_point_addr);
     let entry_point_addr = entry_point_addr as *const ();
     let entry_point = unsafe {
-        core::mem::transmute::<*const (), extern "efiapi" fn(usize, usize) -> ()>(entry_point_addr)
+        core::mem::transmute::<*const (), extern "efiapi" fn(&FrameBufferConfig) -> ()>(
+            entry_point_addr,
+        )
     };
 
     uefi::allocator::exit_boot_services(); // exit boot services before jumping to the kernel
 
-    entry_point(gop_frame_base, gop_frame_size);
+    entry_point(&frame_buffer_config);
 
     Status::SUCCESS
 }

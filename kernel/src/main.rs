@@ -3,6 +3,7 @@
 
 use core::arch::asm;
 use core::panic::PanicInfo;
+use kernel::graphics::{FrameBufferConfig, Graphics, PixelColor};
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
@@ -10,13 +11,14 @@ fn panic(_info: &PanicInfo) -> ! {
 }
 
 #[no_mangle]
-pub extern "efiapi" fn kernel_main(frame_buffer_base: usize, frame_buffer_size: usize) -> () {
+pub extern "efiapi" fn kernel_main(c: &FrameBufferConfig) -> () {
+    let g = Graphics::new(*c);
     unsafe {
-        for i in 0..frame_buffer_size {
-            let addr = frame_buffer_base + i;
-            core::ptr::write_volatile(addr as *mut u8, (i % 256) as u8);
+        for y in 0..c.mode_info.resolution().1 {
+            for x in 0..c.mode_info.resolution().0 {
+                (g.pixel_writer)(c, x, y, PixelColor::new(0, 255, 0));
+            }
         }
-
         loop {
             asm!("hlt");
         }
