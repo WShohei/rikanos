@@ -82,7 +82,7 @@ impl Console {
         }
     }
 
-    pub fn put_string(&mut self, s: &str) -> () {
+    fn put_string(&mut self, s: &str) -> () {
         let mut x = self._cursor_col * 8;
         let y = self._cursor_row * 16;
         for c in s.chars() {
