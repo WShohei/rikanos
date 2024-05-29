@@ -20,8 +20,9 @@ fn panic(_info: &PanicInfo) -> ! {
 
 #[no_mangle]
 pub extern "efiapi" fn kernel_main(c: &FrameBufferConfig) -> () {
-    let g = Graphics::new(*c).clone();
-    Console::initialize(g, PixelColor::new(255, 255, 255), PixelColor::new(0, 0, 0));
+    Graphics::initialize(*c);
+    let g = Graphics::instance();
+    Console::initialize(*g, PixelColor::new(255, 255, 255), PixelColor::new(0, 0, 0));
 
     // Clear the screen
     g.clear(&PixelColor::new(0, 0, 0));

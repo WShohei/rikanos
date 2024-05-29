@@ -1,5 +1,10 @@
 use uefi::proto::console::gop::ModeInfo;
 
+use core::mem::MaybeUninit;
+
+static mut GRAPHICS: MaybeUninit<Graphics> = MaybeUninit::uninit();
+static mut IS_INITIALIZED: bool = false;
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct FrameBufferConfig {
@@ -28,7 +33,7 @@ pub struct Graphics {
 }
 
 impl Graphics {
-    pub fn new(cfg: FrameBufferConfig) -> Self {
+    fn new(cfg: FrameBufferConfig) -> Self {
         unsafe fn write_pixel_rgb(
             cfg: &FrameBufferConfig,
             x: usize,
@@ -61,7 +66,25 @@ impl Graphics {
             _ => panic!("unsupported pixel format"),
         };
 
-        Graphics { _cfg: cfg, _pixel_writer: pixel_writer }
+        Graphics {
+            _cfg: cfg,
+            _pixel_writer: pixel_writer,
+        }
+    }
+
+    pub fn initialize(cfg: FrameBufferConfig) -> () {
+        if unsafe { IS_INITIALIZED } {
+            panic!("Graphics is already initialized");
+        }
+        unsafe { IS_INITIALIZED = true };
+        unsafe { core::ptr::write(GRAPHICS.as_mut_ptr(), Graphics::new(cfg)) };
+    }
+
+    pub fn instance() -> &'static Graphics {
+        if !unsafe { IS_INITIALIZED } {
+            panic!("Graphics is not initialized");
+        }
+        unsafe { &*GRAPHICS.as_ptr() }
     }
 
     pub fn write_pixel(&self, x: usize, y: usize, color: &PixelColor) -> () {
