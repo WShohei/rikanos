@@ -3,6 +3,7 @@ pub mod ascii_font;
 pub mod console;
 pub mod font;
 pub mod graphics;
+pub mod logger;
 
 #[macro_export]
 macro_rules! print {

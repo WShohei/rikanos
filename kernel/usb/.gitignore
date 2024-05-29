@@ -1,0 +1,12 @@
+*.d
+*.cpp
+*.hpp
+*.o.tmp
+*.c
+*.o
+*.a
+*.h
+*.asm
+
+!lib.cpp
+!logger.cpp
