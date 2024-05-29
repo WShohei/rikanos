@@ -15,10 +15,10 @@ pub fn write_ascii(g: &Graphics, x: usize, y: usize, c: char, color: &PixelColor
     }
 }
 
-pub fn write_string(g: &Graphics, x: usize, y: usize, s: &str, color: &PixelColor) -> () {
-    let mut x = x;
-    for c in s.chars() {
-        write_ascii(g, x, y, c, color);
-        x += 8;
-    }
-}
+//pub fn write_string(g: &Graphics, x: usize, y: usize, s: &str, color: &PixelColor) -> () {
+//    let mut x = x;
+//    for c in s.chars() {
+//        write_ascii(g, x, y, c, color);
+//        x += 8;
+//    }
+//}
