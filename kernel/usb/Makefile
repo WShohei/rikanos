@@ -1,6 +1,8 @@
 TARGET = libusb.a
 OBJS = lib.o \
 			 logger.o \
+			 libcxx_support.o \
+			 newlib_support.o \
 			 usb-cpp/memory.o \
        usb-cpp/device.o \
        usb-cpp/xhci/ring.o \
@@ -18,7 +20,7 @@ OBJS = lib.o \
 DEPENDS = $(join $(dir $(OBJS)),$(addprefix .,$(notdir $(OBJS:.o=.d))))
 
 CPPFLAGS += -I.
-CFLAGS   += -O2 -Wall -g --target=x86_64-elf -ffreestanding -mno-red-zone
+CFLAGS   += -O2 -Wall -g --target=x86_64-elf -ffreestanding -mno-red-zone -I/home/shohei/osbook/devenv/x86_64-elf/include
 CXXFLAGS += -O2 -Wall -g --target=x86_64-elf -ffreestanding -mno-red-zone \
             -fno-exceptions -fno-rtti -std=c++17 -I/home/shohei/osbook/devenv/x86_64-elf/include/c++/v1
 

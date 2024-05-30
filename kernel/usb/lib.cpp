@@ -35,12 +35,12 @@ extern "C" {
         // TODO: use the passed impl variable
         for (int i = 1; i <= xhc->MaxPorts(); ++i) {
             auto port = xhc->PortAt(i);
-            Log(kDebug, "Port %d: IsConnected=%d\n", i, port.IsConnected());
+            //Log(kDebug, "Port %d: IsConnected=%d\n", i, port.IsConnected());
 
             if (port.IsConnected()) {
                 if (auto err = ConfigurePort(*xhc, port)) {
-                    Log(kError, "failed to configure port: %s at %s:%d\n",
-                    err.Name(), err.File(), err.Line());
+                    //Log(kError, "failed to configure port: %s at %s:%d\n",
+                    //err.Name(), err.File(), err.Line());
                     continue;
                 }
             }

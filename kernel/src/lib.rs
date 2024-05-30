@@ -5,6 +5,8 @@ pub mod font;
 pub mod graphics;
 pub mod pci;
 pub mod error;
+pub mod usb;
+pub mod mouse;
 
 #[macro_export]
 macro_rules! print {

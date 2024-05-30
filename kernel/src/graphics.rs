@@ -5,6 +5,17 @@ use core::mem::MaybeUninit;
 static mut GRAPHICS: MaybeUninit<Graphics> = MaybeUninit::uninit();
 static mut IS_INITIALIZED: bool = false;
 
+pub struct Vector2D<T> {
+    pub x: T,
+    pub y: T,
+}
+
+impl<T> Vector2D<T> {
+    pub fn new(x: T, y: T) -> Self {
+        Vector2D { x, y }
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct FrameBufferConfig {
@@ -74,7 +85,7 @@ impl Graphics {
 
     pub fn initialize(cfg: FrameBufferConfig) -> () {
         if unsafe { IS_INITIALIZED } {
-            panic!("Graphics is already initialized");
+            return;
         }
         unsafe { IS_INITIALIZED = true };
         unsafe { core::ptr::write(GRAPHICS.as_mut_ptr(), Graphics::new(cfg)) };
@@ -90,6 +101,19 @@ impl Graphics {
     pub fn write_pixel(&self, x: usize, y: usize, color: &PixelColor) -> () {
         unsafe {
             (self._pixel_writer)(&self._cfg, x, y, color);
+        }
+    }
+
+    pub fn fill_regtangle(
+        &self,
+        pos: Vector2D<usize>,
+        size: Vector2D<usize>,
+        color: &PixelColor,
+    ) -> () {
+        for y in pos.y..pos.y + size.y {
+            for x in pos.x..pos.x + size.x {
+                self.write_pixel(x, y, color);
+            }
         }
     }
 

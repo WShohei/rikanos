@@ -1,5 +1,6 @@
 use crate::font::write_ascii;
 use crate::graphics::{Graphics, PixelColor};
+use crate::graphics::Vector2D;
 extern crate alloc;
 
 use core::fmt::Write;
@@ -46,10 +47,19 @@ impl Console {
 
     pub fn initialize(g: Graphics, fg_color: PixelColor, bg_color: PixelColor) {
         if unsafe { IS_INITIALIZED } {
-            panic!("Console is already initialized");
+            return;
         }
-        unsafe { IS_INITIALIZED = true };
-        unsafe { core::ptr::write(CONSOLE.as_mut_ptr(), Console::new(g, fg_color, bg_color)) };
+        unsafe {
+            IS_INITIALIZED = true;
+            core::ptr::write(CONSOLE.as_mut_ptr(), Console::new(g, fg_color, bg_color));
+            let console = &mut *CONSOLE.as_mut_ptr();
+            let frame_width = console.frame_width();
+            let frame_height = console.frame_height();
+            console._g.fill_regtangle(Vector2D::<usize>::new(0, 0), Vector2D::<usize>::new(frame_width, frame_height - 50), &console._bg_color);
+            console._g.fill_regtangle(Vector2D::<usize>::new(0, frame_height - 50), Vector2D::<usize>::new(frame_width, 50), &PixelColor::new(1, 8, 17));
+            console._g.fill_regtangle(Vector2D::<usize>::new(0, frame_height - 50), Vector2D::<usize>::new(frame_width / 5, 50), &PixelColor::new(80, 80, 80));
+            console._g.fill_regtangle(Vector2D::<usize>::new(10, frame_height - 40), Vector2D::<usize>::new(30, 30), &PixelColor::new(160, 160, 160));
+        }
     }
 
     pub fn instance() -> &'static mut Console {
@@ -57,6 +67,14 @@ impl Console {
             panic!("Console is not initialized");
         }
         unsafe { &mut *CONSOLE.as_mut_ptr() }
+    }
+
+    fn frame_width(&self) -> usize {
+        self._g.width()
+    }
+
+    fn frame_height(&self) -> usize {
+        self._g.height()
     }
 
     fn clear(&mut self) -> () {
