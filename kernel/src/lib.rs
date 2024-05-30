@@ -3,7 +3,8 @@ pub mod ascii_font;
 pub mod console;
 pub mod font;
 pub mod graphics;
-pub mod logger;
+pub mod pci;
+pub mod error;
 
 #[macro_export]
 macro_rules! print {

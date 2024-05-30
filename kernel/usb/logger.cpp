@@ -1,11 +1,17 @@
 #include "logger.hpp"
 
+#include <cstddef>
 #include <cstdio>
+#include <string.h>
 #include <stdarg.h>
+
+//#include "console.hpp"
 
 namespace {
   LogLevel log_level = kWarn;
 }
+
+//extern Console* console;
 
 void SetLogLevel(LogLevel level) {
   log_level = level;

@@ -1,9 +1,6 @@
 TARGET = libusb.a
 OBJS = lib.o \
-       logger.o \
-       libcxx_support.o \
-       newlib_support.o \
-       pci.o \
+			 logger.o \
 			 usb-cpp/memory.o \
        usb-cpp/device.o \
        usb-cpp/xhci/ring.o \
@@ -30,9 +27,10 @@ all: $(TARGET)
 
 .PHONY: clean
 clean:
-	find . -name "*.o" | xargs rm
-	find . -name "*.d" | xargs rm -rf
-	rm libusb.a
+	find . -name "*.o" | xargs --no-run-if-empty rm
+	find . -name "*.d" | xargs --no-run-if-empty rm -rf
+	find . -name "*.o.tmp" | xargs --no-run-if-empty rm -rf
+	find . -name "*.a" | xargs --no-run-if-empty
 
 libusb.a: $(OBJS) Makefile
 	ar rcs $@ $(OBJS)

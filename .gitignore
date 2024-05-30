@@ -2,4 +2,5 @@ mnt
 target
 .cargo
 *.img
+out
 
