@@ -8,6 +8,7 @@ use kernel::mouse::{self, MouseCursor};
 use kernel::pci::Device;
 use kernel::usb::{self, XhciController};
 use kernel::{print, println};
+use kernel::memory_map::MemoryMap;
 
 // set the memory allocator
 use linked_list_allocator::LockedHeap;
@@ -21,7 +22,7 @@ fn panic(_info: &PanicInfo) -> ! {
 }
 
 #[no_mangle]
-pub extern "efiapi" fn kernel_main(c: &FrameBufferConfig) -> () {
+pub extern "efiapi" fn kernel_main(c: &FrameBufferConfig, mmap: &MemoryMap) -> () {
     Graphics::initialize(*c);
     let graphics = Graphics::instance();
     Console::initialize(
@@ -32,6 +33,17 @@ pub extern "efiapi" fn kernel_main(c: &FrameBufferConfig) -> () {
     Device::initialize();
     MouseCursor::initialize(*graphics, Vector2D::<usize>::new(200, 300));
     usb::register_mouse_observer(mouse_observer);
+
+    let mmap_iter = mmap.entries();
+    for (i, m) in mmap_iter.enumerate() {
+        println!(
+            "Type = {:?}, PhysicalStart = {:#x}, NumberOfPages = {:#x}, Attribute = {:#x}",
+            m.ty,
+            m.phys_start,
+            m.page_count,
+            m.att
+        );
+    }
 
     for i in 0..Device::num_devices() {
         let device = Device::get_device(i).unwrap();

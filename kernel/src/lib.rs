@@ -7,6 +7,7 @@ pub mod pci;
 pub mod error;
 pub mod usb;
 pub mod mouse;
+pub mod memory_map;
 
 #[macro_export]
 macro_rules! print {

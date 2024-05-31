@@ -192,14 +192,15 @@ fn efi_main(handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
 
     let mmap_buf = &mut vec![0; 4096 * 4];
     let mmap_buf: &mut [u8] = &mut mmap_buf.as_mut_slice();
-    if let Regular(mut mmap_file_handle) = mmap_file_handle {
-        let _ = save_memory_map(bs, &mut mmap_file_handle, mmap_buf).unwrap();
+    let mmap = if let Regular(mut mmap_file_handle) = mmap_file_handle {
+        let mmap = save_memory_map(bs, &mut mmap_file_handle, mmap_buf).unwrap();
         mmap_file_handle.flush().unwrap();
         mmap_file_handle.close();
+        mmap
     } else {
         info!("Failed to open mmap file");
         return Status::ABORTED;
-    }
+    };
 
     info!("Wrote memory map to mmap file");
     // End of saving the memory map to a file
@@ -251,14 +252,14 @@ fn efi_main(handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     info!("Kernel entry point: 0x{:x}", entry_point_addr);
     let entry_point_addr = entry_point_addr as *const ();
     let entry_point = unsafe {
-        core::mem::transmute::<*const (), extern "efiapi" fn(&FrameBufferConfig) -> ()>(
+        core::mem::transmute::<*const (), extern "efiapi" fn(&FrameBufferConfig, &MemoryMap) -> ()>(
             entry_point_addr,
         )
     };
 
     uefi::allocator::exit_boot_services(); // exit boot services before jumping to the kernel
 
-    entry_point(&frame_buffer_config);
+    entry_point(&frame_buffer_config, &mmap);
 
     Status::SUCCESS
 }
