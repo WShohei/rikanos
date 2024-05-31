@@ -11,6 +11,7 @@ cp $DEVENV_DIR/OVMF_CODE.fd ./OVMFs/
 cp $DEVENV_DIR/OVMF_VARS.fd ./OVMFs/
 qemu-system-x86_64 \
     -monitor stdio \
+    -d int --no-reboot --no-shutdown \
     -drive if=pflash,format=raw,readonly,file=./OVMFs/OVMF_CODE.fd \
     -drive if=pflash,format=raw,file=./OVMFs/OVMF_VARS.fd \
     -drive if=ide,index=0,media=disk,format=raw,file=$IMG_NAME \

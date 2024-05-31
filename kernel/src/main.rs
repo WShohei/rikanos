@@ -10,15 +10,13 @@ use kernel::usb::{self, XhciController};
 use kernel::{print, println};
 use kernel::memory_map::MemoryMap;
 use kernel::segment::{setup_segments, set_dsall, set_csss};
+use kernel::paging::setup_identity_page_table;
 
 // set the memory allocator
 use linked_list_allocator::LockedHeap;
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 // end of setting the memory allocator
-
-#[no_mangle]
-pub static KERNEL_MAIN_STACK: [u8; 1024 * 1024] = [0; 1024 * 1024];
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
@@ -27,13 +25,14 @@ fn panic(_info: &PanicInfo) -> ! {
 
 #[no_mangle]
 pub extern "efiapi" fn kernel_main_new_stack(c: &FrameBufferConfig, mmap: &MemoryMap) -> () {
-    //setup_segments();
-    //let cs = 1 << 3 as u16;
-    //let ss = 2 << 3 as u16;
-    //unsafe {
-    //    set_dsall(0);
-    //    set_csss(cs, ss);
-    //}
+    setup_segments();
+    let cs = 1 << 3 as u16;
+    let ss = 2 << 3 as u16;
+    unsafe {
+        set_dsall(0);
+        set_csss(cs, ss);
+    }
+    setup_identity_page_table();
 
     Graphics::initialize(*c);
     let graphics = Graphics::instance();

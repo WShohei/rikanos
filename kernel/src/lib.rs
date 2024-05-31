@@ -9,6 +9,7 @@ pub mod usb;
 pub mod mouse;
 pub mod memory_map;
 pub mod segment;
+pub mod paging;
 
 #[macro_export]
 macro_rules! print {

@@ -4,6 +4,13 @@
 ; Registers: RDI, RSI, RDX, RCX, R8, R9
 
 bits 64
+
+extern kernel_main_new_stack
+
+section .bss align=16
+  KERNEL_MAIN_STACK:
+  resb 1024 * 1024
+
 section .text
 
 global IoOut32 ; void IoOut32(uint16_t addr, uint32_t data);
@@ -18,9 +25,6 @@ IoIn32:
   mov dx, di ; dx = addr
   in eax, dx ; eax = data
   ret
-
-extern kernel_main_new_stack
-extern KERNEL_MAIN_STACK
 
 global kernel_main
 kernel_main:
@@ -64,3 +68,7 @@ set_csss:
   pop rbp
   ret
 
+global set_cr3 ; fn set_cr3(value: u64) -> ()
+set_cr3:
+  mov cr3, rdi
+  ret

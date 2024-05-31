@@ -1,6 +1,8 @@
-use core::ptr::{addr_of_mut, addr_of};
+use core::ptr::addr_of_mut;
+use core::mem::MaybeUninit;
 
-static mut GDT: [SegmentDescriptor; 3] = [SegmentDescriptor::new(); 3];
+//static mut GDT: [SegmentDescriptor; 3] = [SegmentDescriptor::new(); 3];
+static mut GDT: MaybeUninit<[SegmentDescriptor; 3]> = MaybeUninit::uninit();
 
 #[derive(Debug, Clone, Copy)]
 struct DescriptorType(u64);
@@ -161,7 +163,8 @@ extern "C" {
 
 pub fn setup_segments() {
     unsafe {
-        let gdt = addr_of_mut!(GDT);
+        let gdt_ptr = &mut *GDT.as_mut_ptr();
+        let gdt = addr_of_mut!(gdt_ptr[0]);
         let gdt = gdt as *mut SegmentDescriptor;
         let gdt = core::slice::from_raw_parts_mut(gdt, 3);
         let gdt_size = core::mem::size_of_val(gdt) as u16;
