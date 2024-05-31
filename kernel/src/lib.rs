@@ -8,6 +8,7 @@ pub mod error;
 pub mod usb;
 pub mod mouse;
 pub mod memory_map;
+pub mod segment;
 
 #[macro_export]
 macro_rules! print {

@@ -9,6 +9,7 @@ use kernel::pci::Device;
 use kernel::usb::{self, XhciController};
 use kernel::{print, println};
 use kernel::memory_map::MemoryMap;
+use kernel::segment::{setup_segments, set_dsall, set_csss};
 
 // set the memory allocator
 use linked_list_allocator::LockedHeap;
@@ -16,13 +17,24 @@ use linked_list_allocator::LockedHeap;
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 // end of setting the memory allocator
 
+#[no_mangle]
+pub static KERNEL_MAIN_STACK: [u8; 1024 * 1024] = [0; 1024 * 1024];
+
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
 #[no_mangle]
-pub extern "efiapi" fn kernel_main(c: &FrameBufferConfig, mmap: &MemoryMap) -> () {
+pub extern "efiapi" fn kernel_main_new_stack(c: &FrameBufferConfig, mmap: &MemoryMap) -> () {
+    //setup_segments();
+    //let cs = 1 << 3 as u16;
+    //let ss = 2 << 3 as u16;
+    //unsafe {
+    //    set_dsall(0);
+    //    set_csss(cs, ss);
+    //}
+
     Graphics::initialize(*c);
     let graphics = Graphics::instance();
     Console::initialize(
@@ -35,7 +47,7 @@ pub extern "efiapi" fn kernel_main(c: &FrameBufferConfig, mmap: &MemoryMap) -> (
     usb::register_mouse_observer(mouse_observer);
 
     let mmap_iter = mmap.entries();
-    for (i, m) in mmap_iter.enumerate() {
+    for (_, m) in mmap_iter.enumerate() {
         println!(
             "Type = {:?}, PhysicalStart = {:#x}, NumberOfPages = {:#x}, Attribute = {:#x}",
             m.ty,
